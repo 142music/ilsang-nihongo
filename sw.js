@@ -1,4 +1,4 @@
-const CACHE = 'ilsang-nihongo-v2';
+const CACHE = 'ilsang-nihongo-v3';
 const AUDIO_CACHE = 'ilsang-nihongo-audio-v1';
 const FILES = ['./', './index.html', './manifest.webmanifest', './apple-touch-icon.png', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
@@ -12,6 +12,6 @@ self.addEventListener('fetch', e => {
     return;
   }
   // 나머지: 인터넷이 되면 최신본, 안 되면 저장본
-  e.respondWith(fetch(e.request).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })
+  e.respondWith(fetch(e.request, {cache: 'no-store'}).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })
     .catch(() => caches.match(e.request, {ignoreSearch: true}).then(r => r || caches.match('./index.html'))));
 });

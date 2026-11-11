@@ -491,7 +491,16 @@ renderChapter(chapters.some(c=>c.id===start) ? start : store.get('ch', chapters[
 </script>
 
 <script>
-if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{})); }
+if ('serviceWorker' in navigator) {
+  // 새 버전이 올라오면 앱을 열거나 다시 볼 때 확인하고, 바뀌었으면 한 번 새로 고침
+  const hadController = !!navigator.serviceWorker.controller;
+  let reloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadController || reloaded) return; reloaded = true; location.reload(); });
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).then(reg => {
+    reg.update();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update(); });
+  }).catch(()=>{}));
+}
 </script>
 </body>
 </html>
