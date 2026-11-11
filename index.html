@@ -208,22 +208,24 @@ function pickVoices(){
   if(!synth) return;
   const vs = synth.getVoices();
   const ja = vs.filter(v => /^ja/i.test(v.lang)).sort((a,b)=>quality(b)-quality(a) || (MALE.test(b.name)-MALE.test(a.name)) || a.name.localeCompare(b.name));
-  if (!jaVoice) { const saved = store.get('voice', null); jaVoice = ja.find(v=>v.voiceURI===saved) || ja[0] || null; }
+  const saved = store.get('voice', '');
+  jaVoice = saved ? (ja.find(v=>v.voiceURI===saved) || null) : null;
   if (!AUDIO) {
-    vsel.innerHTML = ja.map(v=>`<option value="${v.voiceURI.replace(/"/g,'&quot;')}">${v.name.replace(/\s*\(.*?\)\s*/g,'')}${MALE.test(v.name)?' (남)':''}${qLabel(v)}</option>`).join('') || '<option>일본어 음성 없음</option>';
-    if(jaVoice) vsel.value = jaVoice.voiceURI;
+    vsel.innerHTML = '<option value="">아이폰 기본 설정 따르기</option>' + ja.map(v=>`<option value="${v.voiceURI.replace(/"/g,'&quot;')}">${v.name.replace(/\s*\(.*?\)\s*/g,'')}${MALE.test(v.name)?' (남)':''}${qLabel(v)}</option>`).join('');
+    vsel.value = jaVoice ? jaVoice.voiceURI : '';
   }
   const ko = vs.filter(v => /^ko/i.test(v.lang)).sort((a,b)=>quality(b)-quality(a) || a.name.localeCompare(b.name));
-  if (!koVoice) { const ks = store.get('kvoice', null); koVoice = ko.find(v=>v.voiceURI===ks) || ko[0] || null; }
-  kvsel.innerHTML = ko.map(v=>`<option value="${v.voiceURI.replace(/"/g,'&quot;')}">${v.name.replace(/\s*\(.*?\)\s*/g,'')}${qLabel(v)}</option>`).join('') || '<option>한국어 음성 없음</option>';
-  if(koVoice) kvsel.value = koVoice.voiceURI;
+  const ks = store.get('kvoice', '');
+  koVoice = ks ? (ko.find(v=>v.voiceURI===ks) || null) : null;
+  kvsel.innerHTML = '<option value="">아이폰 기본 설정 따르기</option>' + ko.map(v=>`<option value="${v.voiceURI.replace(/"/g,'&quot;')}">${v.name.replace(/\s*\(.*?\)\s*/g,'')}${qLabel(v)}</option>`).join('');
+  kvsel.value = koVoice ? koVoice.voiceURI : '';
   if (!AUDIO && vs.length && !ja.length){
     warn.hidden = false;
     warn.textContent = '이 기기에서 일본어 음성을 찾지 못했어요. 설정 → 손쉬운 사용 → 읽기 및 말하기 → 음성 → 일본어에서 음성을 내려받은 뒤 다시 열어 주세요.';
   }
 }
-if (!AUDIO) vsel.addEventListener('change', () => { const v=synth.getVoices().find(x=>x.voiceURI===vsel.value); if(v){ jaVoice=v; store.set('voice', v.voiceURI); testJa(); } });
-kvsel.addEventListener('change', () => { const v=synth.getVoices().find(x=>x.voiceURI===kvsel.value); if(v){ koVoice=v; store.set('kvoice', v.voiceURI); playOnce([{text:'안녕하세요. 오늘도 잘 부탁드립니다.', lang:'ko-KR'}]); } });
+if (!AUDIO) vsel.addEventListener('change', () => { jaVoice = synth.getVoices().find(x=>x.voiceURI===vsel.value) || null; store.set('voice', jaVoice ? jaVoice.voiceURI : ''); testJa(); });
+kvsel.addEventListener('change', () => { koVoice = synth.getVoices().find(x=>x.voiceURI===kvsel.value) || null; store.set('kvoice', koVoice ? koVoice.voiceURI : ''); playOnce([{text:'안녕하세요. 오늘도 잘 부탁드립니다.', lang:'ko-KR'}]); });
 $('vtest').onclick = testJa;
 if (synth) { pickVoices(); synth.onvoiceschanged = pickVoices; }
 else if (!AUDIO) { warn.hidden=false; warn.textContent='이 브라우저는 음성 읽기를 지원하지 않아요. 아이폰·아이패드의 Safari에서 열어 주세요.'; }
