@@ -117,8 +117,9 @@ h1{font-size:calc(30px*var(--fs));margin:6px 0 4px;text-wrap:balance}
 .np-where{font-size:12px;color:#d9a48f;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .np-ko{font-size:14px;opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .np-ja{font-family:var(--jp);font-size:calc(20px*var(--fs));font-weight:600;line-height:1.35}
-.np-btns{display:flex;gap:6px}
+.np-btns{display:flex;gap:6px;flex-wrap:wrap}
 .np-btns button{min-height:44px;min-width:58px;border-radius:999px;border:1px solid rgba(255,255,255,.25);background:transparent;color:var(--on-ink);font-size:15px;padding:0 12px}
+.np-btns button[aria-pressed="true"]{background:var(--on-ink);color:var(--ink);font-weight:700}
 .np-btns .np-stop{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -145,6 +146,10 @@ h1{font-size:calc(30px*var(--fs));margin:6px 0 4px;text-wrap:balance}
         <div class="speed" role="group" aria-label="섞어 듣기 범위" id="scope">
           <button data-s="ch">섞기: 이 장</button><button data-s="book">섞기: 책 전체</button>
         </div>
+        <div class="speed" role="group" aria-label="문장 반복" id="reps">
+          <button data-n="1">반복 1번</button><button data-n="2">2번</button><button data-n="3">3번</button>
+        </div>
+        <button class="chip" id="loopAll" aria-pressed="false">끝나면 처음부터</button>
         <button class="chip" id="koToggle" aria-pressed="false">우리말도 읽기</button>
         <button class="chip" id="bigger" aria-label="글자 크기">가 크게</button>
         <label class="chip vsel"><span>목소리</span><select id="voice" aria-label="일본어 목소리"></select></label>
@@ -162,6 +167,7 @@ h1{font-size:calc(30px*var(--fs));margin:6px 0 4px;text-wrap:balance}
     <div class="np-btns">
       <button id="npPrev" aria-label="이전 문장">이전</button>
       <button id="npStop" class="np-stop" aria-label="멈추기">멈춤</button>
+      <button id="npLoop" aria-pressed="false">한 문장 반복</button>
       <button id="npNext" aria-label="다음 문장">다음</button>
     </div>
   </div>
@@ -179,6 +185,7 @@ const $ = id => document.getElementById(id);
 
 let rate = store.get('rate', 0.8), readKo = store.get('ko', false), fs = store.get('fs', 1), scope = store.get('scope','ch');
 let avoice = store.get('avoice', 'kumo');
+let reps = store.get('reps', 1), loopAll = store.get('loop', false), holdOne = false;
 let jaVoice = null, koVoice = null;
 const synth = window.speechSynthesis;
 const warn = $('warn');
@@ -278,24 +285,34 @@ function startUnits(list, from, m){
 function nextUnit(dir){
   silence(); const my = token;
   ui += dir; if (ui < 0) ui = 0;
-  if (ui >= units.length) { if (mode==='seq' && current) store.set('pos-'+current.id, 0); stopAll(); return; }
-  const u = units[ui]; const steps = u.steps();
+  if (ui >= units.length) {
+    if (loopAll) { ui = 0; if (mode==='shuffle') units = shuffled(units); }
+    else { if (mode==='seq' && current) store.set('pos-'+current.id, 0); stopAll(); return; }
+  }
+  const u = units[ui]; const steps = withReps(u.steps());
   showNow(u);
   if (mode==='seq' && current && u.idx!=null) store.set('pos-'+current.id, u.idx);
   let si = 0;
   const go = () => {
     if (my!==token) return;
     const s = steps[si++];
-    if (!s) { setTimeout(() => { if (my===token) nextUnit(+1); }, 500); return; }
+    if (!s) { setTimeout(() => { if (my===token) nextUnit(holdOne ? 0 : +1); }, holdOne ? 900 : 500); return; }
     markEl(s.el||null);
     playStep(s, () => setTimeout(go, s.gap||250));
   };
   go();
 }
-function stopAll(){ silence(); playing = false; units = []; ui = -1; markEl(null); markCard(null); $('np').hidden = true; setPlayBtn(); }
+function withReps(steps){
+  const ko = steps.filter(x=>x.lang!=='ja-JP'), ja = steps.filter(x=>x.lang==='ja-JP');
+  let out = ko.slice(); for (let r=0; r<reps; r++) out = out.concat(ja.map(x=>Object.assign({}, x, {gap: r<reps-1 ? 900 : x.gap})));
+  return out;
+}
+function setHold(v){ holdOne = v; $('npLoop').setAttribute('aria-pressed', String(v)); }
+function stopAll(){ silence(); playing = false; setHold(false); units = []; ui = -1; markEl(null); markCard(null); $('np').hidden = true; setPlayBtn(); }
 $('npStop').onclick = stopAll;
-$('npNext').onclick = () => { if (playing) nextUnit(+1); };
-$('npPrev').onclick = () => { if (playing) nextUnit(-1); };
+$('npNext').onclick = () => { if (playing) { setHold(false); nextUnit(+1); } };
+$('npLoop').onclick = () => setHold(!holdOne);
+$('npPrev').onclick = () => { if (playing) { setHold(false); nextUnit(-1); } };
 
 let lastEl=null, lastCard=null;
 function markEl(el){ if(lastEl) lastEl.classList.remove('now'); lastEl = el; if(el) el.classList.add('now'); }
@@ -419,7 +436,7 @@ content.addEventListener('click', e => {
   if (from){ const cards = chapterCards(); const card = from.closest('.card'); const i = cards.indexOf(card);
     startUnits(cards.map((c,k)=>cardUnit(c,k)), Math.max(0,i), 'seq'); return; }
   const say = e.target.closest('.say');
-  if (say){ playOnce(elSteps(say.closest('.card'), readKo)); return; }
+  if (say){ playOnce(withReps(elSteps(say.closest('.card'), readKo))); return; }
   const g = e.target.closest('.grp button');
   if (g){ const all = chapterCards(); const body=content.querySelector(`.gbody[data-g="${g.dataset.g}"]`);
     const first = all.indexOf(body.querySelector('.card'));
@@ -453,6 +470,12 @@ speedBtns.forEach(b => b.onclick = () => setRate(+b.dataset.r)); setRate(rate);
 const scopeBtns = document.querySelectorAll('#scope button');
 function setScope(s){ scope=s; store.set('scope',s); scopeBtns.forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.s===s))); $('shuffle').textContent = s==='book' ? '섞어 듣기 (책 전체)' : '섞어 듣기'; }
 scopeBtns.forEach(b => b.onclick = () => setScope(b.dataset.s)); setScope(scope);
+const repBtns = document.querySelectorAll('#reps button');
+function setReps(n){ reps=n; store.set('reps',n); repBtns.forEach(b=>b.setAttribute('aria-pressed', String(+b.dataset.n===n))); }
+repBtns.forEach(b => b.onclick = () => setReps(+b.dataset.n)); setReps(reps);
+const loopBtn = $('loopAll');
+function setLoop(v){ loopAll=v; store.set('loop',v); loopBtn.setAttribute('aria-pressed', String(v)); }
+loopBtn.onclick = () => setLoop(!loopAll); setLoop(loopAll);
 const koBtn = $('koToggle');
 koBtn.setAttribute('aria-pressed', String(readKo));
 koBtn.onclick = () => { readKo=!readKo; store.set('ko',readKo); koBtn.setAttribute('aria-pressed', String(readKo)); };
